@@ -1,0 +1,46 @@
+h1, h2, h3, h4, p, span {
+    font-family: Poppins, sans-serif;
+}
+
+h1 {
+    color: #22254c;
+    margin-bottom: 10px;
+    text-align: center;
+}
+
+.main-card {
+    padding: 25px;
+    border-radius: 25px!important;
+    max-width: 600px!important;
+}
+
+.btn-primary {
+    height: 56px !important;
+    width: 100%;
+    background: #343ede 0 0 no-repeat padding-box!important;
+    box-shadow: 0 3px 6px #00000029!important;
+    border-radius: 12px!important;
+    font: normal normal 700 15px/18px Roboto!important;
+    letter-spacing: 0!important;
+    opacity: 0.9!important;
+    color: white!important;
+    padding: 17px !important;
+    text-transform: none!important;
+}
+
+span.token {
+    font-size: 1.8rem;
+    font-family: "treeb-font01regular", sans-serif !important;
+}
+
+@font-face {
+    font-family: "treeb-font01regular";
+    src: url("./fonts/treeb-webfont.woff2") format("woff2"), url("./fonts/treeb-webfont.woff") format("woff");
+    font-weight: normal;
+    font-style: normal;
+}
+
+.switch {
+    text-align: center;
+    max-width: 150px!important;
+}
