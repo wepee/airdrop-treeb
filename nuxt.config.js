@@ -5,6 +5,10 @@ export default {
     // Target: https://go.nuxtjs.dev/config-target
     target: 'static',
 
+    env:{
+        TESTFTM_URL: process.env.TESTFTM_URL
+    },
+
     // Global page headers: https://go.nuxtjs.dev/config-head
     head: {
         titleTemplate: '%s - Retreeb',
