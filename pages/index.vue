@@ -55,18 +55,20 @@
                 <v-container v-else>
                   <span>Please enter your csv file</span>
                   <v-file-input
-                      show-size
-                      truncate-length="15"
+                    v-model="csvFile"
+                    @change="csvAddressesEntry"
+                    show-size
+                    truncate-length="15"
                   ></v-file-input>
                 </v-container>
 
                 <v-expansion-panels class="py-3" v-if="addresses.length">
                   <v-expansion-panel>
                     <v-expansion-panel-header>
-                      Selected addresses
+                      Selected addresses ({{addresses.length}})
                     </v-expansion-panel-header>
                     <v-expansion-panel-content v-for="address in addresses" :key="address">
-                      {{ address.slice(0, 10) + '...' + address.slice(32, 42) }}
+                      {{ address }}
                       <v-icon @click="removeAddress(address)">
                         mdi-close
                       </v-icon>
@@ -94,196 +96,259 @@
 
 <script>
 
-import { ethers } from 'ethers';
-import Airdropper from '../artifacts/contracts/airdropper/airdropper.sol/airdropper.json';
-import Treeb from '../artifacts/contracts/token/token.sol/token.json';
-import { isAddress } from '~/utils/validation';
+import { ethers } from 'ethers'
+import { csvToArray, isAddress } from "~/utils";
+import { NETWORKS, ERROR, TREEB, AIRDROPPER } from "~/constants"
 
 export default {
 
   data() {
     return {
-      amount: 0,
+      amount: "10",
       myAddress: null,
+      provider: null,
       signer: null,
-      newAddress: '0x70997970c51812dc3a010c7d01b50e0d17dc79c8',
-      addresses: ['0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc'],
-      treebAddress: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
-      treebABI: Treeb.abi,
+      newAddress: '',
+      addresses: ['0xBE1a06cf568e7A54819583fF89d0200993C1eAb4'],
       contractBalance: '',
-      airdropperAddress: '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512',
-      airdropperABI: Airdropper.abi,
+      airdropperContract: null,
+      treebContract: null,
+      params: process.env.mode === 'development' || process.env.mode === 'staging' ? NETWORKS.TestnetParams : NETWORKS.ftmParams,
+      csvFile: null,
       manualEntry: true,
       errors: [],
-    };
+    }
   },
 
   async mounted() {
-    await this.connectWeb3();
+    await this.connectWeb3()
 
-    await this.changeNetwork();
-
-    await this.getSmartContractBalance();
+    await this.getSmartContractBalance()
 
     // Force page refreshes on network changes
     // The "any" network will allow spontaneous network changes
-    const provider = new ethers.providers.Web3Provider(window.ethereum, 'any');
-    provider.on('network', (newNetwork, oldNetwork) => {
+    this.provider.on('network', (newNetwork, oldNetwork) => {
       if (oldNetwork) {
-        window.location.reload();
+        window.location.reload()
       }
-    });
+    })
   },
 
   methods: {
     // request access to the user's account. This works regardless of the wallet you're using.
     async connectWeb3() {
-      if (window.ethereum) {
-        await window.ethereum.request({ method: 'eth_requestAccounts' });
+      try{
 
-        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        if (window.ethereum) {
 
-        this.signer = provider.getSigner();
+          await window.ethereum.request({ method: 'eth_requestAccounts' });
 
-        this.myAddress = await this.signer.getAddress();
+          this.provider = new ethers.providers.Web3Provider(window.ethereum)
+
+          this.signer = this.provider.getSigner()
+
+          this.myAddress = await this.signer.getAddress()
+
+          if (await window.ethereum.request({ method: 'eth_chainId' }) !== this.params.chainId) {
+            throw ERROR.WRONG_NETWORK
+          }
+
+          this.airdropperContract = new ethers.Contract(AIRDROPPER.address, AIRDROPPER.abi, this.signer)
+          this.treebContract = new ethers.Contract(TREEB.address, TREEB.abi, this.signer)
+
+        } else {
+          throw ERROR.NO_METAMASK
+        }
+
+      } catch (e) {
+
+        this.addNewError(e)
+
+        if(e == ERROR.WRONG_NETWORK) {
+          await this.changeChainId()
+        } else if(e == ERROR.NO_METAMASK){
+          this.addNewError(e)
+        }
       }
     },
 
     async submit() {
       try {
-        this.loading = true;
+        this.loading = true
 
         if (window.ethereum) {
-          await this.connectWeb3();
+          await this.connectWeb3()
 
-          await this.approve();
+          await this.approve()
 
-          await this.airdrop(this.addresses);
+          await this.airdrop(this.addresses)
         }
       } catch (e) {
-        this.addNewError(e.data?.message || e.message);
+        this.addNewError(e)
       } finally {
-        this.loading = false;
+        this.loading = false
+      }
+    },
+
+    async changeChainId () {
+      try {
+        if ((await window.ethereum.request({ method: 'eth_chainId' })).toLowerCase() !== this.params.chainId.toLowerCase()) {
+          await window.ethereum.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: this.params.chainId }]
+          })
+        }
+      } catch (switchError) {
+        console.log(switchError);
+        // This error code indicates that the chain has not been added to MetaMask.
+        if (switchError.code === 4902 || switchError.code === -32603) {
+          try {
+            await window.ethereum.request({
+              method: 'wallet_addEthereumChain',
+              params: [{
+                chainName: this.params.chainName,
+                chainId: this.params.chainId,
+                rpcUrls: [this.params.rpcUrls],
+                nativeCurrency: {
+                  name: this.params.nativeCurrency.name,
+                  symbol: this.params.nativeCurrency.symbol, // 2-6 characters long
+                  decimals: 18
+                }
+              }]
+            })
+          } catch (addError) {
+            console.log(addError)
+          }
+        }
       }
     },
 
     async approve() {
       try {
-      // load contract
-        const treebContract = new ethers.Contract(this.treebAddress, this.treebABI, this.signer);
 
-        const totalAmountToSend = this.amount * this.addresses.length;
+        const totalAmountToSend = this.amount * this.addresses.length
 
         // check allowance
-        const allowance = await treebContract.allowance(this.myAddress, this.airdropperAddress) > totalAmountToSend;
+        const allowance = await this.treebContract.allowance(this.myAddress, AIRDROPPER.address) > totalAmountToSend
 
         // if user address still not allow
         if (!allowance) {
         // approve the address
-          const approveTransaction = await treebContract.approve(this.airdropperAddress, ethers.constants.MaxUint256);
-          await approveTransaction.wait();
+          const approveTransaction = await this.treebContract.approve(AIRDROPPER.address, ethers.constants.MaxUint256)
+          await approveTransaction.wait()
         }
       } catch (e) {
-        this.addNewError(e.data?.message || e.message);
+        this.addNewError(e.data?.message || e.message)
       } finally {
-        this.loading = false;
+        this.loading = false
       }
     },
 
     async airdrop(addresses) {
-      this.loading = true;
+      this.loading = true
       if (!this.amount) {
-        this.addNewError('Amount cannot be less than 0 TREEB');
-        return;
+        this.addNewError('Amount cannot be less than 0 TREEB')
+        return
       }
       if (!this.addresses.length) {
-        this.addNewError('Please enter at least one address');
-        return;
+        this.addNewError('Please enter at least one address')
+        return
       }
 
       try {
-        const contract = new ethers.Contract(this.airdropperAddress, this.airdropperABI, this.signer);
-        const airdropTransaction = await contract.transferToUsers(addresses, ethers.utils.parseEther(this.amount));
-        await airdropTransaction.wait();
-
-        // refresh balance
-        await this.getSmartContractBalance();
+        const airdropTransaction = await this.airdropperContract.transferToUsers(addresses, ethers.utils.parseEther(this.amount))
+        await airdropTransaction.wait()
       } catch (e) {
-        this.addNewError(e.data?.message || e.message);
+        this.addNewError(e)
       } finally {
-        this.loading = false;
+        // refresh balance
+        await this.getSmartContractBalance()
+        this.loading = false
       }
     },
 
     async withdrawResidualToken() {
       try {
-        const contract = new ethers.Contract(this.airdropperAddress, this.airdropperABI, this.signer);
-        const airdropTransaction = await contract.withdrawResidualToken();
-        await airdropTransaction.wait();
+        const airdropTransaction = await this.airdropperContract.withdrawResidualToken()
+        await airdropTransaction.wait()
       } catch (e) {
-        this.addNewError(e.data?.message || e.message);
+        this.addNewError(e)
       } finally {
         // refresh blance
-        await this.getSmartContractBalance();
-        this.loading = false;
+        await this.getSmartContractBalance()
+        this.loading = false
       }
     },
 
     async getSmartContractBalance() {
-      this.loading = true;
+      this.loading = true
       try {
-        await this.connectWeb3();
-        const treebContract = new ethers.Contract(this.treebAddress, this.treebABI, this.signer);
-        const balance = await treebContract.balanceOf(this.airdropperAddress);
-        this.contractBalance = ethers.utils.formatEther(balance.toString());
+        const balance = await this.treebContract.balanceOf(AIRDROPPER.address)
+        this.contractBalance = ethers.utils.formatEther(balance.toString())
       } catch (e) {
-        this.addNewError(e.data?.message || e.message);
+        this.addNewError(e)
       } finally {
-        this.loading = false;
+        this.loading = false
       }
     },
 
     manualAddressEntry() {
-      const address = this.newAddress;
+      const address = this.newAddress
 
       if (isAddress(address)) {
-        this.addresses.push(address);
-        this.newAddress = '';
+        this.addresses.push(address)
+        this.newAddress = ''
       } else {
-        const shortAddress = `${address.slice(0, 10)}...${address.slice(32, 42)}`;
-        this.addNewError(`${shortAddress} is not a valid address`);
+        const shortAddress = `${address.slice(0, 10)}...${address.slice(32, 42)}`
+        this.addNewError(`${shortAddress} is not a valid address`)
       }
     },
 
+    csvAddressesEntry(){
+      const input = this.csvFile;
+      if(!input){
+        return
+      }
+
+      const reader = new FileReader();
+
+      reader.onload = function (e) {
+        const text = e.target.result;
+        const data = csvToArray(text);
+        console.log(data)
+        this.addresses = [...new Set(data)];
+      }.bind(this)
+
+      reader.readAsText(input);
+
+    },
+
     removeAddress(addressToRemove) {
-      this.addresses = this.addresses.filter((el) => el !== addressToRemove);
+      this.addresses = this.addresses.filter((el) => el !== addressToRemove)
     },
 
-    changeNetwork() {
-
-    },
-
-    addNewError(message) {
-      const error = { message, value: true };
-      const errorId = this.errors.length;
-      this.errors.push(error);
+    addNewError(e) {
+      const message = e?.data?.message || e.message || e
+      const error = { message, value: true }
+      const errorId = this.errors.length
+      this.errors.push(error)
       setTimeout(() => {
-        this.errors[errorId].value = false;
-      }, 3500);
+        this.errors[errorId].value = false
+      }, 3500)
     },
   },
-};
+}
 </script>
 
 <style>
 .main-container{
-  justify-content: center;
+  justify-content: center
 }
 
 .alert-container{
   position: absolute;
   top: 10px;
   right: 10px;
-  z-index: 10
+  z-index: 10;
 }
 </style>
