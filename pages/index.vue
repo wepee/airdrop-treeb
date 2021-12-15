@@ -109,7 +109,7 @@ export default {
       provider: null,
       signer: null,
       newAddress: '',
-      addresses: ['0xBE1a06cf568e7A54819583fF89d0200993C1eAb4'],
+      addresses: [],
       contractBalance: '',
       airdropperContract: null,
       treebContract: null,
