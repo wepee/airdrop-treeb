@@ -66,6 +66,12 @@
                   <v-expansion-panel>
                     <v-expansion-panel-header>
                       Selected addresses ({{addresses.length}})
+                      <v-spacer></v-spacer>
+                      <v-btn style="max-width: 32px" icon @click="reset">
+                        <v-icon >
+                          mdi-close
+                        </v-icon>
+                      </v-btn>
                     </v-expansion-panel-header>
                     <v-expansion-panel-content v-for="address in addresses" :key="address">
                       {{ address }}
@@ -98,22 +104,26 @@
 
 import { ethers } from 'ethers'
 import { csvToArray, isAddress } from "~/utils";
-import { NETWORKS, ERROR, TREEB, AIRDROPPER } from "~/constants"
+import { NETWORKS, ERROR, TREEB, AIRDROPPER, AIRDROPPER_TEST, TREEB_TEST } from "~/constants";
+
+const isDev = process.env.mode === 'development'
 
 export default {
 
   data() {
     return {
-      amount: "10",
+      amount: "",
       myAddress: null,
       provider: null,
       signer: null,
       newAddress: '',
       addresses: [],
+      treebContractInfo: isDev ? TREEB_TEST : TREEB,
+      airdropContractInfo: isDev ? AIRDROPPER_TEST : AIRDROPPER,
       contractBalance: '',
       airdropperContract: null,
       treebContract: null,
-      params: process.env.mode === 'development' || process.env.mode === 'staging' ? NETWORKS.TestnetParams : NETWORKS.ftmParams,
+      params: process.env.mode === 'development' ? NETWORKS.TestnetParams : NETWORKS.ftmParams,
       csvFile: null,
       manualEntry: true,
       errors: [],
@@ -121,6 +131,7 @@ export default {
   },
 
   async mounted() {
+
     await this.connectWeb3()
 
     await this.getSmartContractBalance()
@@ -153,8 +164,8 @@ export default {
             throw ERROR.WRONG_NETWORK
           }
 
-          this.airdropperContract = new ethers.Contract(AIRDROPPER.address, AIRDROPPER.abi, this.signer)
-          this.treebContract = new ethers.Contract(TREEB.address, TREEB.abi, this.signer)
+          this.airdropperContract = new ethers.Contract(this.airdropContractInfo.address, this.airdropContractInfo.abi, this.signer)
+          this.treebContract = new ethers.Contract(this.treebContractInfo.address, this.treebContractInfo.abi, this.signer)
 
         } else {
           throw ERROR.NO_METAMASK
@@ -229,12 +240,12 @@ export default {
         const totalAmountToSend = this.amount * this.addresses.length
 
         // check allowance
-        const allowance = await this.treebContract.allowance(this.myAddress, AIRDROPPER.address) > totalAmountToSend
+        const allowance = await this.treebContract.allowance(this.myAddress, this.airdropContractInfo.address) > totalAmountToSend
 
         // if user address still not allow
         if (!allowance) {
         // approve the address
-          const approveTransaction = await this.treebContract.approve(AIRDROPPER.address, ethers.constants.MaxUint256)
+          const approveTransaction = await this.treebContract.approve(this.airdropContractInfo.address, ethers.constants.MaxUint256)
           await approveTransaction.wait()
         }
       } catch (e) {
@@ -283,7 +294,7 @@ export default {
     async getSmartContractBalance() {
       this.loading = true
       try {
-        const balance = await this.treebContract.balanceOf(AIRDROPPER.address)
+        const balance = await this.treebContract.balanceOf(this.airdropContractInfo.address)
         this.contractBalance = ethers.utils.formatEther(balance.toString())
       } catch (e) {
         this.addNewError(e)
@@ -336,6 +347,10 @@ export default {
         this.errors[errorId].value = false
       }, 3500)
     },
+    reset(){
+      this.addresses = []
+      this.csvFile = null
+    }
   },
 }
 </script>

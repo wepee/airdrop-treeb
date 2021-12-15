@@ -24,11 +24,11 @@ module.exports = {
     },
     ftmtest: {
       url: process.env.TESTFTM_URL || '',
-      accounts: process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
+      accounts: process.env.FANTOM_TEST_PRIVATE_KEY !== undefined ? [process.env.FANTOM_TEST_PRIVATE_KEY] : [],
     },
     fantom: {
       url: process.env.FANTOM_URL || '',
-      accounts: process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
+      accounts: process.env.FANTOM_PRIVATE_KEY !== undefined ? [process.env.FANTOM_PRIVATE_KEY] : [],
     },
   },
   settings: {
